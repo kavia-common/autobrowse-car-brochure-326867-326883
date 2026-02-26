@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Minimal Next.js App",
-  description: "Ultra-minimal Next.js application",
+  title: "AutoBrowse — Car Brochure",
+  description:
+    "Browse, search, compare, favorite cars, and submit inquiries. Includes a simple admin area.",
 };
 
 export default function RootLayout({
@@ -14,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
