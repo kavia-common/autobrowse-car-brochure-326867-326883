@@ -12,6 +12,7 @@ import {
   type CarDetail,
 } from "@/lib/api";
 import { Badge, Button, Card, Input, Textarea } from "@/components/ui";
+import { PaymentCalculator } from "@/components/PaymentCalculator";
 
 function SpecsTable({ specs }: { specs: Record<string, unknown> | null }) {
   if (!specs || Object.keys(specs).length === 0) {
@@ -252,19 +253,27 @@ export default function CarDetailClient({ carId }: { carId: number }) {
           ) : null}
         </Card>
 
-        <Card className="p-4">
-          <div className="text-base font-semibold">Overview</div>
-          <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">
-            {car.description || "No description provided."}
-          </div>
+        <div className="space-y-6">
+          <PaymentCalculator
+            price={car.price_msrp}
+            currency={car.currency}
+            carLabel={`${car.year} ${car.make} ${car.model}`}
+          />
 
-          <div className="mt-4">
-            <div className="text-base font-semibold">Specs</div>
-            <div className="mt-2">
-              <SpecsTable specs={car.specs} />
+          <Card className="p-4">
+            <div className="text-base font-semibold">Overview</div>
+            <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">
+              {car.description || "No description provided."}
             </div>
-          </div>
-        </Card>
+
+            <div className="mt-4">
+              <div className="text-base font-semibold">Specs</div>
+              <div className="mt-2">
+                <SpecsTable specs={car.specs} />
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
 
       <Card className="p-4">
