@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import React from "react";
 import { compareCars, formatMoney, type CarDetail } from "@/lib/api";
 import { Badge, Button, Card, EmptyState, Input } from "@/components/ui";
+import { PaymentCalculator, type PaymentCalculatorApi } from "@/components/PaymentCalculator";
+import { TradeInEstimator } from "@/components/TradeInEstimator";
 
 function useCompareSelection() {
   const key = "car_brochure_compare_ids";
@@ -35,6 +37,9 @@ function CompareClient() {
   const [cars, setCars] = React.useState<CarDetail[] | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Per-car payment calculator integration APIs (so each compared car has isolated widget state).
+  const paymentApisRef = React.useRef<Record<number, PaymentCalculatorApi | null>>({});
 
   React.useEffect(() => {
     if (!add) return;
@@ -68,6 +73,16 @@ function CompareClient() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids.join(",")]);
+
+  // Keep payment API map tidy when cars are removed.
+  React.useEffect(() => {
+    const allowed = new Set(ids);
+    const existing = paymentApisRef.current;
+    for (const k of Object.keys(existing)) {
+      const id = Number(k);
+      if (!allowed.has(id)) delete existing[id];
+    }
+  }, [ids]);
 
   function remove(id: number) {
     setIds((prev) => prev.filter((x) => x !== id));
@@ -133,11 +148,7 @@ function CompareClient() {
               onChange={(e) => setManualId(e.target.value)}
               placeholder="e.g. 3"
             />
-            <Button
-              type="button"
-              onClick={addManual}
-              disabled={ids.length >= 4}
-            >
+            <Button type="button" onClick={addManual} disabled={ids.length >= 4}>
               Add
             </Button>
             <Button type="button" variant="ghost" onClick={() => setIds([])}>
@@ -164,77 +175,125 @@ function CompareClient() {
           }
         />
       ) : (
-        <Card className="overflow-auto">
-          <div className="min-w-[900px]">
-            <div className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200 bg-slate-50">
-              <div className="p-4 text-sm font-semibold text-slate-700">
-                Field
-              </div>
-              {(cars || []).map((c) => (
-                <div key={c.id} className="p-4">
-                  <div className="text-sm font-semibold">
-                    {c.year} {c.make} {c.model}
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {(cars || []).map((c) => (
+              <Card key={c.id} className="p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-base font-semibold">
+                      {c.year} {c.make} {c.model}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                      <span>{c.trim || "—"}</span>
+                      {c.category ? <Badge tone="blue">{c.category.name}</Badge> : null}
+                      <span className="font-semibold text-slate-900">
+                        {formatMoney(c.price_msrp, c.currency)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-600">{c.trim || "—"}</div>
-                  <div className="mt-2">
+
+                  <div className="flex items-center gap-2">
                     <Link
                       href={`/cars/${c.id}`}
-                      className="text-xs text-blue-700 hover:text-blue-800"
+                      className="text-sm text-blue-700 hover:text-blue-800"
                     >
                       View details →
                     </Link>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => remove(c.id)}>
+                      Remove
+                    </Button>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200">
-              <div className="p-4 text-sm font-medium text-slate-700">MSRP</div>
-              {(cars || []).map((c) => (
-                <div key={c.id} className="p-4 text-sm font-semibold">
-                  {formatMoney(c.price_msrp, c.currency)}
+                <div className="mt-4 space-y-4">
+                  <TradeInEstimator
+                    currency={c.currency}
+                    onApply={({ tradeInCredit, negativeEquity }) => {
+                      // Per-compared-car integration: apply to that car's payment widget only.
+                      // (We intentionally ignore negativeEquity in payment estimate for now.)
+                      paymentApisRef.current[c.id]?.applyTradeIn({
+                        tradeInCredit,
+                        negativeEquity,
+                      });
+                    }}
+                  />
+
+                  <PaymentCalculator
+                    price={c.price_msrp}
+                    currency={c.currency}
+                    carLabel={`${c.year} ${c.make} ${c.model}`}
+                    onReady={(api) => {
+                      paymentApisRef.current[c.id] = api;
+                    }}
+                  />
                 </div>
-              ))}
-            </div>
+              </Card>
+            ))}
+          </div>
 
-            <div className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200">
-              <div className="p-4 text-sm font-medium text-slate-700">
-                Category
-              </div>
-              {(cars || []).map((c) => (
-                <div key={c.id} className="p-4 text-sm">
-                  {c.category ? (
-                    <Badge tone="blue">{c.category.name}</Badge>
-                  ) : (
-                    "—"
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {specKeys.map((k) => (
-              <div
-                key={k}
-                className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200"
-              >
-                <div className="p-4 text-sm font-medium text-slate-700">{k}</div>
+          <Card className="overflow-auto">
+            <div className="min-w-[900px]">
+              <div className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200 bg-slate-50">
+                <div className="p-4 text-sm font-semibold text-slate-700">Field</div>
                 {(cars || []).map((c) => (
-                  <div key={c.id} className="p-4 text-sm text-slate-700">
-                    {c.specs && Object.prototype.hasOwnProperty.call(c.specs, k)
-                      ? String((c.specs as Record<string, unknown>)[k])
-                      : "—"}
+                  <div key={c.id} className="p-4">
+                    <div className="text-sm font-semibold">
+                      {c.year} {c.make} {c.model}
+                    </div>
+                    <div className="text-xs text-slate-600">{c.trim || "—"}</div>
+                    <div className="mt-2">
+                      <Link
+                        href={`/cars/${c.id}`}
+                        className="text-xs text-blue-700 hover:text-blue-800"
+                      >
+                        View details →
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
-            ))}
 
-            {busy ? (
-              <div className="p-4 text-sm text-slate-600">
-                Loading comparison…
+              <div className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200">
+                <div className="p-4 text-sm font-medium text-slate-700">MSRP</div>
+                {(cars || []).map((c) => (
+                  <div key={c.id} className="p-4 text-sm font-semibold">
+                    {formatMoney(c.price_msrp, c.currency)}
+                  </div>
+                ))}
               </div>
-            ) : null}
-          </div>
-        </Card>
+
+              <div className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200">
+                <div className="p-4 text-sm font-medium text-slate-700">Category</div>
+                {(cars || []).map((c) => (
+                  <div key={c.id} className="p-4 text-sm">
+                    {c.category ? <Badge tone="blue">{c.category.name}</Badge> : "—"}
+                  </div>
+                ))}
+              </div>
+
+              {specKeys.map((k) => (
+                <div
+                  key={k}
+                  className="grid grid-cols-[240px_repeat(4,minmax(180px,1fr))] border-b border-slate-200"
+                >
+                  <div className="p-4 text-sm font-medium text-slate-700">{k}</div>
+                  {(cars || []).map((c) => (
+                    <div key={c.id} className="p-4 text-sm text-slate-700">
+                      {c.specs && Object.prototype.hasOwnProperty.call(c.specs, k)
+                        ? String((c.specs as Record<string, unknown>)[k])
+                        : "—"}
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {busy ? (
+                <div className="p-4 text-sm text-slate-600">Loading comparison…</div>
+              ) : null}
+            </div>
+          </Card>
+        </>
       )}
     </div>
   );
