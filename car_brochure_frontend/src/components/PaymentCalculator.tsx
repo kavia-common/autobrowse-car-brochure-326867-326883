@@ -9,6 +9,26 @@ type PaymentCalculatorProps = {
   price: number | null | undefined;
   currency: string | null | undefined;
   carLabel: string;
+  /**
+   * Optional hook for external widgets (e.g., trade-in estimator) to push values
+   * into this calculator in a controlled, reusable way.
+   */
+  onReady?: (api: PaymentCalculatorApi) => void;
+};
+
+export type PaymentCalculatorApi = {
+  /**
+   * Apply trade-in-related values to the calculator.
+   *
+   * Contract:
+   * - tradeInCredit is treated as a non-negative credit (mapped to "Trade-in").
+   * - negativeEquity is NOT automatically rolled into loan to avoid surprising users.
+   *   (If product decides to support it later, add an explicit field + flow.)
+   */
+  applyTradeIn: (params: { tradeInCredit: number; negativeEquity?: number }) => void;
+
+  /** Reset to defaults (same as pressing "Reset assumptions"). */
+  resetAssumptions: () => void;
 };
 
 const TERM_OPTIONS = [24, 36, 48, 60, 72, 84] as const;
@@ -39,6 +59,33 @@ export function PaymentCalculator(props: PaymentCalculatorProps) {
   const [salesTaxPct, setSalesTaxPct] = React.useState<string>(String(DEFAULT_TAX_PCT));
   const [aprPct, setAprPct] = React.useState<string>(String(DEFAULT_APR_PCT));
   const [termMonths, setTermMonths] = React.useState<string>(String(DEFAULT_TERM));
+
+  const resetAssumptions = React.useCallback(() => {
+    setDownPayment(moneyInputValue(DEFAULT_DOWN));
+    setTradeIn("");
+    setFees(moneyInputValue(DEFAULT_FEES));
+    setSalesTaxPct(String(DEFAULT_TAX_PCT));
+    setAprPct(String(DEFAULT_APR_PCT));
+    setTermMonths(String(DEFAULT_TERM));
+  }, []);
+
+  // Provide an integration API for other widgets (e.g. trade-in estimator).
+  React.useEffect(() => {
+    if (!props.onReady) return;
+
+    const api: PaymentCalculatorApi = {
+      applyTradeIn: ({ tradeInCredit }) => {
+        // Only apply the credit to the existing "Trade-in" input.
+        // NOTE: We explicitly do NOT roll negative equity into the estimate yet.
+        // That would require an explicit UI field and clearer disclosures.
+        const v = Math.max(0, Number.isFinite(tradeInCredit) ? tradeInCredit : 0);
+        setTradeIn(v > 0 ? String(Math.round(v)) : "");
+      },
+      resetAssumptions,
+    };
+
+    props.onReady(api);
+  }, [props, resetAssumptions]);
 
   // Keep price in sync if car changes.
   React.useEffect(() => {
@@ -214,18 +261,7 @@ export function PaymentCalculator(props: PaymentCalculatorProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setDownPayment(moneyInputValue(DEFAULT_DOWN));
-                  setTradeIn("");
-                  setFees(moneyInputValue(DEFAULT_FEES));
-                  setSalesTaxPct(String(DEFAULT_TAX_PCT));
-                  setAprPct(String(DEFAULT_APR_PCT));
-                  setTermMonths(String(DEFAULT_TERM));
-                }}
-              >
+              <Button type="button" variant="secondary" onClick={resetAssumptions}>
                 Reset assumptions
               </Button>
               <Button

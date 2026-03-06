@@ -12,7 +12,8 @@ import {
   type CarDetail,
 } from "@/lib/api";
 import { Badge, Button, Card, Input, Textarea } from "@/components/ui";
-import { PaymentCalculator } from "@/components/PaymentCalculator";
+import { PaymentCalculator, type PaymentCalculatorApi } from "@/components/PaymentCalculator";
+import { TradeInEstimator } from "@/components/TradeInEstimator";
 
 function SpecsTable({ specs }: { specs: Record<string, unknown> | null }) {
   if (!specs || Object.keys(specs).length === 0) {
@@ -60,6 +61,9 @@ export default function CarDetailClient({ carId }: { carId: number }) {
   const [inqMessage, setInqMessage] = React.useState("");
   const [inqSent, setInqSent] = React.useState<string | null>(null);
   const [inqBusy, setInqBusy] = React.useState(false);
+
+  // Payment calculator integration API for reusable cross-widget flows (e.g. trade-in estimator).
+  const [paymentApi, setPaymentApi] = React.useState<PaymentCalculatorApi | null>(null);
 
   React.useEffect(() => {
     (async () => {
@@ -254,10 +258,20 @@ export default function CarDetailClient({ carId }: { carId: number }) {
         </Card>
 
         <div className="space-y-6">
+          <TradeInEstimator
+            currency={car.currency}
+            onApply={({ tradeInCredit, negativeEquity }) => {
+              // Canonical integration point: all updates go through PaymentCalculatorApi.
+              // (We intentionally ignore negativeEquity in the payment estimate for now.)
+              paymentApi?.applyTradeIn({ tradeInCredit, negativeEquity });
+            }}
+          />
+
           <PaymentCalculator
             price={car.price_msrp}
             currency={car.currency}
             carLabel={`${car.year} ${car.make} ${car.model}`}
+            onReady={(api) => setPaymentApi(api)}
           />
 
           <Card className="p-4">
